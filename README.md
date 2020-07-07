@@ -5,15 +5,15 @@ For the data analysis of this paper we provide:
 
 
 A) The tables contain the data compiled in « .csv » (raw data can be requested from the author). Each table represents an experiment and is associated with the figures. Below we summarize the headings of the tables (some are common among tables). The tables are:
--Fig1.csv
+-Fig_1.csv
 -Fig_2.csv
--Fig_2D.csv
 -Fig_3.csv
--Fig_4.csv
 -Fig_S2.csv
--FigS3A.csv
--FigS3B.csv
--FigS5.csv
+-Fig_S3A.csv
+-Fig_S3B.csv
+-Fig_S4.csv
+-Fig_S6.csv
+-Fig_S7.csv
 
 
 Headeds of the tables:
@@ -25,31 +25,25 @@ Headeds of the tables:
 	-od: optical density at 595 nm
 	-strain: genotype
 	-NQO_c: concentration of the chemical
-	-rep:  replicate number
+	-rep/repi:  replicate number
 	-hour: time in hours
 	-NQO: whether the well contains 4-NQO or not
-	-gen: number of generations elapsed
+	-gen: number of generations elapsed (200 corresponds to 100)
 	-evol: condition of evolution
 	-corr: correlation between the growth rate (r) and the maximum population size (K) parameters
-	-Ploidy: ploidy value
-	-Change: both ploidy values (policy in 0 generations and ploidy in 200 generations) are shown separated by « _ »
 	-note_fit: fit of the growthcurver package for each growth curve
-	-rval: growth rate (r)
-	-max_size:  the maximal population size (K)
+	-rval: the maximum growth rate (r)
+	-max_size: the maximal population size (K)
 	-check: check the ones are under 0.2 OD
 	-Final_perc (“Division” and “Final columns” were used to get this column): percentage of growth rate compared to same strain in normal conditions
-	-Final_perc_check: remove from the percentage of growth rate compared to same strain in normal conditions the ones which are under 0.2 OD
+	-Final_perc_check: removing from the percentage of growth rate compared to same strain in normal conditions in the ones which are under 0.2 OD
 
-The headeds that are not mentioned are not used during the scripts presented.
+The headers that are not mentioned are not used during the scripts presented.
 
 B) 2 scripts:
-	-Main figures (« Main_figures_paper_CB.R » )
-	-Supplementary figures (« Supp_figures_paper_CB.R » )
+	-Main figures (« Review_Main_figures_paper_CBR.R » )
+	-Supplementary figures (« Review_Supp_figures_paper_CBR.R » )
 
-INPUT: These scripts require that the user adds the path to the directory containing the data files. Afterwards, the scripts can be executed without additional arguments because they use the relative paths to each of the data sets.
+INPUT: These scripts require that the user adds the path to the directory containing the data files in setwd(""). Afterwards, the scripts can be executed without additional arguments because they use the relative paths to each of the data sets.
 
-OUTPUT: The user will receive as output all the figures in "pdf" and "jpeg" format in the directory containing the data files.
-
-
-
-
+OUTPUT: The user will receive as output all the figures in "pdf" and "jpg" format in the directory containing the data tables.
