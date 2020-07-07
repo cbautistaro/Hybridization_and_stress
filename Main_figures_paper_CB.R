@@ -11,25 +11,39 @@ library(readr)
 library(cowplot)
 library(magrittr)
 library(tidyverse)
+library(rstatix)
 library(readxl)
 library(gridExtra)
+library(grid)
+library(ggpubr)
 library(growthcurver)
 library(Cairo)
 library(Hmisc)
 library(nlme)
 library(Matrix)
 library(lme4)
+library(drc)
+library(HDPenReg)
 library(ggpubr)
 library(gtable)
 library(grid.raster)
+library(drc)
+library(EDcomp)
+library(reshape2)
+library(broom)
+library(modelr)
+library(egg)
+library(ggpubr)
+library(rstatix)
 
 #Put the path to the folder where all the .csv are
 setwd("")
 
 
+
 ################Figure 1################
 ################Get Dataset################
-fdata <- read.csv("Fig1.csv")
+fdata <- read.csv("Fig_1.csv")
 ################Figure 1B###############
 fdata%<>% mutate(day=as.numeric(day))
 fdata%<>% mutate(hour=as.numeric(hour))
@@ -42,6 +56,28 @@ fdata <- filter(fdata, hour < 30)
 fdata <- fdata %>% arrange(hour)
 fdata <- fdata %>% filter(hour < 25)
 
+
+growth_rates1 <- fdata %>% group_by(strain, rep, NQO_c) %>%
+  dplyr::mutate(note_fit = SummarizeGrowth(hour, od)$vals$note,
+                rval = SummarizeGrowth(hour, od)$vals$r,
+                kval = SummarizeGrowth(hour, od)$vals$k,
+                tmid = SummarizeGrowth(hour, od)$vals$t_mid,
+                aucexp = SummarizeGrowth(hour, od)$vals$auc_l,
+                max_size = max(od)) %>%
+  mutate(note_fit = ifelse(note_fit=="", "OK", "ERROR")) %>%
+  slice(1) %>%
+  ungroup() 
+
+gr <- dplyr::filter(growth_rates1, note_fit=="OK")
+gr <- dplyr::filter(gr, strain!="White")
+
+fdataAREA <- gr
+fdataAREA <- filter(fdataAREA, rval<20)
+fdataAREA <- filter(fdataAREA, NQO_c=="4")
+my_comparisons2 <- list( c("1Scer", "2Spar"),c("1Scer", "3Hybrid"),c("2Spar", "3Hybrid"))
+
+################Figure 1B################
+#in cm
 toexpr<-function(x) {
   getfun <- function(x) {
     ifelse(x=="Hybrid", "plain", "italic")
@@ -50,8 +86,6 @@ toexpr<-function(x) {
 }
 
 f0y4 <- ggplot(fdata, aes(x=hour, y=od, colour=strain, group=interaction(rep,strain,NQO_c))) +
-  #stat_summary(position="identity" ,geom="line", fun.y = mean, size=0.1) +
-  #stat_summary(fun.data = mean_sdl, geom = "errorbar") +
   geom_line(aes(linetype = NQO_c)) +
   xlab("Time (h)") + ylab("OD (595 nm)") +theme_minimal()+
   theme(axis.text.x = element_text(hjust = 1)) + xlim(0,24) +
@@ -62,30 +96,57 @@ f0y4 <- ggplot(fdata, aes(x=hour, y=od, colour=strain, group=interaction(rep,str
                      strip.background = element_rect(fill = "white", color="white"), 
                      strip.text.x = element_blank()) + scale_color_manual(values=c("green4", "dodgerblue1", "#FF9999"), 
                                                                           labels = toexpr(c("S. cerevisiae", "S. paradoxus", "Hybrid"))) +
-  theme(axis.title.x = element_text(size=14), axis.text.x = element_text(size = 12),
-        axis.title.y = element_text(size=14), axis.text.y = element_text(size = 12))+
+  theme(axis.title.x = element_text(size=14), axis.text.x = element_text(size = 10),
+        axis.title.y = element_text(size=14), axis.text.y = element_text(size = 10))+
   theme(legend.text.align = 0) + guides(color = guide_legend(title = "Genotype"),
                                         linetype = guide_legend(title = "UV mimetic (μM)")) +
+  theme(legend.text=element_text(size=7), legend.title=element_text(size=8)) +
+  theme(legend.text=element_text(size=7), legend.title=element_text(size=8), 
+        legend.direction = "horizontal", legend.box = "vertical") +
+  theme(legend.spacing.y = unit(-0.2, "cm"),
+        legend.margin=margin(0,0,0,0),
+        legend.box.margin=margin(0,0,-4,-4))
+################Figure 1C################
+
+# Data preparation
+df <- fdataAREA
+df$strain <- as.factor(df$strain)
+
+# Tukey HSD
+stat.test <- aov(rval ~ strain, data = df) %>%
+  tukey_hsd()
+
+Fig1C <- fdataAREA %>% 
+  ggplot(., aes(x=as.factor(strain), y=rval, col=strain)) + 
+  geom_boxplot(outlier.shape = NA) +
+  theme_minimal()+
+  xlab("Generation") + ylab("Growth rate (OD/hour)")+
+  theme(axis.title.x = element_text(size=12), axis.text.x = element_text(size = 10),
+        axis.title.y = element_text(size=12), axis.text.y = element_text(size = 10)) +
+  theme(legend.position="none",panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"), axis.ticks = element_line(colour="black"))+
+  stat_compare_means(method = "anova", label.y = 0.75, aes(label = ..p.format..), size=2.5) +
+  stat_pvalue_manual(
+    stat.test, label = "p.adj", 
+    y.position = c(0.7, 0.72, 0.74),
+    size=2.5
+  )+
+  scale_color_manual(values=c("green4", "dodgerblue1", "#FF9999"), 
+                     labels = toexpr(c("S. cerevisiae", "S. paradoxus", "Hybrid"))) +
+  theme(legend.text.align = 0) + guides(color = guide_legend(title = "Genotype"))+
+  geom_jitter(position=position_jitter(0.2), size=0.6) +
+  theme(legend.text=element_text(size=12)) +
+  scale_x_discrete("Genotype", labels=expression(italic(S.cerevisiae), italic(S.paradoxus), Hybrid)) +
   theme(legend.text=element_text(size=7), legend.title=element_text(size=8))
 
 ################Arrange figures################
-f0y4 <- plot_grid(f0y4, labels = c("B"), nrow=1 )
+Fig1 <- plot_grid(f0y4, Fig1C, labels = c("B", "C"), nrow=1 )
 
-ggsave (plot = f0y4, filename = "figure1B.jpg", units = "cm", device = "jpg",width = 15, height = 10, dpi = 300)
-ggsave (plot = f0y4, filename = "figure1B.pdf", units = "cm", device = "pdf",width = 15, height = 10, dpi = 300)
+ggsave (plot = Fig1, filename = "Fig1.jpg", units = "cm", device = "jpg",width = 20, height = 10, dpi = 300)
+ggsave (plot = Fig1, filename = "Fig1.pdf", units = "cm", device = "pdf",width = 20, height = 10, dpi = 300)
 
-
-
-
-
-
-
-
-
-
-
-
-################Figure2##############
+################Figure2 for the model##############
+#Only for the model
 fdata <- read.csv("Fig_2.csv")
 ################Get growth rates################
 #remove days we do not have all time-points of the curves
@@ -111,8 +172,7 @@ growth_rates <- fdata %>% group_by(strain, NQO, rep, day) %>%
                 max_size = max(od)) %>%
   mutate(note_fit = ifelse(note_fit=="", "OK", "ERROR")) %>%
   slice(1) %>%
-  ungroup() %>%
-  select(strain, NQO, rep, day, time, note_fit,rval, kval,tmid,aucexp, max_size, od, plate)
+  ungroup() 
 
 gr <- dplyr::filter(growth_rates, note_fit=="OK")
 gr <- dplyr::filter(gr, strain!="White")
@@ -120,28 +180,65 @@ gr <- dplyr::filter(gr, strain!="White")
 fdataAREA <- gr
 
 ################Statistical models################
-mod2 = lm(rval ~ NQO*day*strain,
+fdataAREA <- fdataAREA %<>% mutate(strain=ifelse(strain=="1Scer", "Scer",
+                                    ifelse(strain=="2Spar", "Spar",
+                                           ifelse(strain=="3Hybrid", "Hybrid", NA)))) 
+                                  
+lm_NQOdaystrain = lm(rval ~ NQO*day*strain,
           data = fdataAREA)
-summary (mod2)
+summary (lm_NQOdaystrain)
 
 
-#Remove the outlier to get a god fit in the model
+#Remove the outlier to get a better fit in the model
 fdataAREA <- filter(fdataAREA, rval < 20)
 
-mod2 = lm(rval ~ NQO*day*strain,
+lm_NQOdaystrain = lm(rval ~ NQO*day*strain,
           data = fdataAREA)
-summary (mod2)
+summary (lm_NQOdaystrain)
+
+################Statistical models without NQO effect################
+#Linnear
+NQOYES <- filter(fdataAREA, NQO=="Yes")
+
+lm_daystrain = lm(rval ~ day*strain,
+          data = NQOYES)
+summary (lm_daystrain)
+
+
+################Data for figure 2################
+fdata <- read.csv("Fig_2.csv")
+################Get growth rates################
+#remove days we do not have all time-points of the curves
+fdata <- fdata %>% 
+  dplyr::filter(strain!="White", day>2)  %>%
+  group_by(day, strain, NQO, rep, plate, tecan, time) %>% 
+  dplyr::summarise(od = max(od),max_temp = max(time)) 
+
+fdata <- dplyr::filter(fdata, day!=1)
+fdata <- dplyr::filter(fdata, day!=2)
+fdata <- dplyr::filter(fdata, day!=11)
+fdata <- dplyr::filter(fdata, day!=22)
+fdata <- dplyr::filter(fdata, day!=23)
+
+fdata$hour = (fdata$time)/3600
+
+growth_rates <- fdata %>% group_by(strain, NQO, rep, day) %>%
+  dplyr::mutate(note_fit = SummarizeGrowth(hour, od)$vals$note,
+                rval = SummarizeGrowth(hour, od)$vals$r,
+                kval = SummarizeGrowth(hour, od)$vals$k,
+                tmid = SummarizeGrowth(hour, od)$vals$t_mid,
+                aucexp = SummarizeGrowth(hour, od)$vals$auc_l,
+                max_size = max(od)) %>%
+  mutate(note_fit = ifelse(note_fit=="", "OK", "ERROR")) %>%
+  slice(1) %>%
+  ungroup() 
+
+gr <- dplyr::filter(growth_rates, note_fit=="OK")
+gr <- dplyr::filter(gr, strain!="White")
+
+fdataAREA <- gr
 
 ################Figure 2B################
-pd <- position_dodge(0.1) # move them .05 to the left and right
-
-#Confidence intervals
-new.fdataAREA <- data.frame(fdataAREA)
-pred.pred <- predict(mod2, newdata = new.fdataAREA)
-pred.conf <- predict(mod2, newdata = new.fdataAREA, interval = "confidence", level = 0.05)
-predict(mod2, newdata = new.fdataAREA, interval = "prediction")
-pred.int <- predict(mod2, interval = "prediction")
-mydata <- cbind(new.fdataAREA, pred.conf)
 
 #Function to have italic font in legend
 toexpr<-function(x) {
@@ -152,14 +249,17 @@ toexpr<-function(x) {
 }
 
 #Change column time by generations
-mydata <- mydata %>% mutate(gen= day*10)
+fdataAREA <- fdataAREA %>% mutate(gen= day*5)
+
+pd <- position_dodge(0.1)
 
 #Fig 2B in cm
-Fig2B <- ggplot(mydata, aes(x=gen, y=rval, colour=strain, shape=NQO, linetype=NQO)) +
-  geom_point(position=pd, size=1) +
+Fig2B <- ggplot(fdataAREA, aes(x=gen, y=rval, colour=strain, shape=NQO, linetype=NQO)) +
+  geom_point(position=pd, size=0.5) +
+  geom_line(alpha=0.5, aes(group = interaction(strain,rep,NQO))) +
   ylim(0, 0.8) +
+  geom_jitter(size=0.8)+
   scale_shape_manual(values=c(16, 1)) + theme_bw() +
-  stat_smooth(method = lm, se=TRUE, size = 0.5, level = 0.95) +
   theme(legend.position = "top", axis.title.x = element_text(size=12), axis.text.x = element_text(size = 10),
         axis.title.y = element_text(size=12), axis.text.y = element_text(size = 10)) +  
   theme(panel.border = element_blank(), panel.grid.major = element_blank(),panel.grid.minor = element_blank(), 
@@ -168,24 +268,255 @@ Fig2B <- ggplot(mydata, aes(x=gen, y=rval, colour=strain, shape=NQO, linetype=NQ
   scale_color_manual(values=c("green4", "dodgerblue1", "#FF9999"),
                      labels = toexpr(c("S. cerevisiae", "S. paradoxus", "Hybrid"))) +
   theme(legend.text.align = 0) + 
+  facet_grid(. ~strain)+
   scale_linetype_discrete() +
   guides(color = guide_legend(title = "Genotype",
                               override.aes=list(fill=NA)), 
          linetype = guide_legend(title = "UV mimetic", 
                                  override.aes=list(fill=NA)),
          shape = guide_legend(title = "UV mimetic", override.aes=list(colour="black"))) +
-  theme(legend.text=element_text(size=5), legend.title=element_text(size=6), 
+  theme(legend.text=element_text(size=6), legend.title=element_text(size=7), 
         legend.direction = "horizontal", legend.box = "vertical") +
   theme(legend.spacing.y = unit(-0.2, "cm"),
         legend.margin=margin(0,0,0,0),
-        legend.box.margin=margin(0,0,-4,-4))
+        legend.box.margin=margin(0,0,-4,-4)) +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),  legend.position = "top",
+          axis.line = element_line(colour = "black"), 
+          strip.background = element_rect(fill = "white", color="white"), 
+          strip.text.x = element_blank()) +
+  scale_x_continuous(breaks = c(25,50,75,100))
 
-################Get slopes from Figure 2B################
-NQO <- filter(mydata, NQO=="Yes")
-coef(lmList(rval~gen|strain , data = NQO))
+################Figure 2C1################
+#To extract legend
+Fig2C1 <- fdataAREA %>% filter(NQO =="Yes") %>% 
+  ggplot(., aes(x=gen, y=rval, colour=strain, shape=NQO, linetype=NQO)) +
+  ylim(0, 0.8) +
+  scale_shape_manual(values=16) + theme_bw() +
+  stat_smooth(method = lm, se=TRUE, size = 0.5, level = 0.95) +
+  theme(legend.position = "top", axis.title.x = element_text(size=12), axis.text.x = element_text(size = 9),
+        axis.title.y = element_text(size=12), axis.text.y = element_text(size = 10)) +  
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black")) +
+  xlab("Time (generations)") + ylab("Growth rate (OD/hour)") +
+  scale_color_manual(values=c("green4", "dodgerblue1", "#FF9999"),
+                     labels = toexpr(c("S. cerevisiae", "S. paradoxus", "Hybrid"))) +
+  theme(legend.text.align = 0) + 
+  scale_linetype_manual(values=c("solid","solid")) +
+  guides(color = guide_legend(title = "Genotype",
+                              override.aes=list(fill=NA)), 
+         linetype = guide_legend(title = "UV mimetic", 
+                                 override.aes=list(fill=NA)),
+         shape = guide_legend(title = "UV mimetic", override.aes=list(colour="black"))) +
+  theme(legend.text=element_text(size=6), legend.title=element_text(size=7), 
+        legend.direction = "horizontal", legend.box = "vertical") +
+  theme(legend.spacing.y = unit(-0.2, "cm"),
+        legend.margin=margin(0,0,0,0),
+        legend.box.margin=margin(0,0,-4,-4)) +
+  ggtitle("Linear Model") +
+  theme(plot.title = element_text(hjust = 0.5))
 
-NQO <- filter(mydata, NQO=="No")
-coef(lmList(rval~gen|strain , data = NQO))
+g_legend<-function(a.gplot){
+  tmp <- ggplot_gtable(ggplot_build(a.gplot))
+  leg <- which(sapply(tmp$grobs, function(x) x$name) == "guide-box")
+  legend <- tmp$grobs[[leg]]
+  return(legend)}
+
+mylegend<-g_legend(Fig2C1)
+
+#Figure 2C1
+Fig2C1 <- fdataAREA %>% filter(NQO =="Yes") %>% 
+  ggplot(., aes(x=gen, y=rval, colour=strain, shape=NQO, linetype=NQO)) +
+  ylim(0, 0.8) +
+  scale_shape_manual(values=16) + theme_bw() +
+  stat_smooth(method = lm, se = FALSE) +
+  theme(legend.position = "NONE", axis.title.x = element_text(size=10), axis.text.x = element_text(size = 9),
+        axis.title.y = element_text(size=12), axis.text.y = element_text(size = 10)) +  
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black")) +
+  scale_linetype_manual(values=c("solid","solid")) +
+  xlab("Time (generations)") + ylab("Growth rate (OD/hour)") +
+  scale_color_manual(values=c("green4", "dodgerblue1", "#FF9999"),
+                     labels = toexpr(c("S. cerevisiae", "S. paradoxus", "Hybrid"))) +
+  theme(legend.text.align = 0) + 
+  guides(color = guide_legend(title = "Genotype",
+                              override.aes=list(fill=NA)), 
+         linetype = guide_legend(title = "UV mimetic", 
+                                 override.aes=list(fill=NA)),
+         shape = guide_legend(title = "UV mimetic", override.aes=list(colour="black"))) +
+  theme(legend.text=element_text(size=6), legend.title=element_text(size=7), 
+        legend.direction = "horizontal", legend.box = "vertical") +
+  theme(legend.spacing.y = unit(-0.2, "cm"),
+        legend.margin=margin(0,0,0,0),
+        legend.box.margin=margin(0,0,-4,-4)) +
+  ggtitle("Linear Model") +
+  theme(plot.title = element_text(hjust = 0.5 , size = 9)) +
+  scale_x_continuous(breaks = c(25,50,75,100))
+
+################Figure 2C2################
+#Second panel
+fdata <- read.csv("Fig_2.csv")
+fdata <- fdata %>% 
+  dplyr::filter(strain!="White", day>2)  %>%
+  group_by(day, strain, NQO, rep, plate, tecan, time) %>% 
+  dplyr::summarise(od = max(od),max_temp = max(time)) 
+
+fdata <- dplyr::filter(fdata, day!=1)
+fdata <- dplyr::filter(fdata, day!=2)
+fdata <- dplyr::filter(fdata, day!=11)
+fdata <- dplyr::filter(fdata, day!=22)
+fdata <- dplyr::filter(fdata, day!=23)
+
+fdata$hour = (fdata$time)/3600
+growth_rates <- fdata %>% group_by(strain, NQO, rep, day) %>%
+  dplyr::mutate(note_fit = SummarizeGrowth(hour, od)$vals$note,
+                rval = SummarizeGrowth(hour, od)$vals$r,
+                kval = SummarizeGrowth(hour, od)$vals$k,
+                tmid = SummarizeGrowth(hour, od)$vals$t_mid,
+                aucexp = SummarizeGrowth(hour, od)$vals$auc_l,
+                max_size = max(od)) %>%
+  mutate(note_fit = ifelse(note_fit=="", "OK", "ERROR")) %>%
+  slice(1) %>%
+  ungroup() 
+
+growth_rates$gen <- growth_rates$day*5
+
+gr <- dplyr::filter(growth_rates, note_fit=="OK")
+gr <- dplyr::filter(gr, strain!="White")
+
+fdataAREA <- gr
+
+
+nitro1 <- filter(gr, NQO=="Yes") 
+
+nitro1 <- filter(nitro1, rval<20)
+df <- nitro1
+
+#view the data in normal and log scale for dose
+p1 <- df %>% ggplot() + geom_point(aes(gen, rval, color = strain)) + theme_bw()
+p2 <- df %>% ggplot() + geom_point(aes(log((gen)), rval, color = strain)) + theme_bw()
+ggarrange(p1, p2)
+
+
+
+nitro1$gen <- nitro1$day * 5
+df <- nitro1
+
+#Asymtotic
+# define drm function to use with map
+drm.func <- function(x) {
+  drm(rval ~ gen, 
+      fct = LL2.2(),#names = c("Slope", "Lower Limit", "Upper Limit", "ED50")), 
+      data = x)
+}
+
+predict.fun <- function(x) {
+  add_predictions(data.frame(gen = seq(15,105)), x)
+}
+
+coefs.fun <- function(x) {coef(x) %>% tidy}
+
+df2 <- df %>% group_by(strain) %>% nest() %>%
+  mutate(drmod = map(data, drm.func), 
+         pred = map(drmod, predict.fun),
+         coefs = map(drmod, coefs.fun))
+
+# plot raw data, model and ED50 line
+toexpr<-function(x) {
+  getfun <- function(x) {
+    ifelse(x=="Hybrid", "plain", "italic")
+  }
+  as.expression(unname(Map(function(f,v) substitute(f(v), list(f=as.name(f), v=as.character(v))), getfun(x), x)))
+}
+
+Fig2C2<- df2 %>% unnest(data) %>% 
+  ggplot() + 
+  geom_line(aes(gen, pred, color = strain), data =
+              df2 %>% unnest(pred), linetype = "solid", size=0.8) +
+  geom_vline(aes(xintercept = log(x), color = strain),
+             data = df2 %>% unnest(coefs) %>% filter(names == "ED50:(Intercept)")) +
+  theme_bw() +ylim(0,0.8) +xlim(15,130) +
+  theme(legend.position = "NONE", axis.title.x = element_text(size=10), axis.text.x = element_text(size = 9),
+        axis.title.y = element_text(size=12), axis.text.y = element_text(size = 10)) +  
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black")) +
+  xlab("Time (generations)") + ylab("Growth rate (OD/hour)") +
+  scale_color_manual(values=c("green4", "dodgerblue1", "#FF9999"),
+                     labels = toexpr(c("S. cerevisiae", "S. paradoxus", "Hybrid"))) +
+  theme(legend.text.align = 0) + 
+  scale_x_continuous(breaks = c(25,50,75,100)) +
+  guides(color = guide_legend(title = "Genotype",
+                              override.aes=list(fill=NA)), 
+         linetype = guide_legend(title = "UV mimetic", 
+                                 override.aes=list(fill=NA)),
+         shape = guide_legend(title = "UV mimetic", override.aes=list(colour="black"))) +
+  theme(legend.text=element_text(size=4), legend.title=element_text(size=5), 
+        legend.direction = "horizontal", legend.box = "vertical") +
+  theme(legend.spacing.y = unit(-0.2, "cm"),
+        legend.margin=margin(0,0,0,0),
+        legend.box.margin=margin(0,0,-4,-4)) +
+  ggtitle("Asymptotic Model") +
+  theme(plot.title = element_text(hjust = 0.5, size = 9))
+
+
+#Logarithmic
+#Fig 2C3
+# define drm function to use with map
+drm.func <- function(x) {
+  drm(rval ~ gen, 
+      fct = DRC.logCurve(),#names = c("Slope", "Lower Limit", "Upper Limit", "ED50")), 
+      data = x)
+}
+
+predict.fun <- function(x) {
+  add_predictions(data.frame(gen = seq(15,105)), x)
+}
+
+coefs.fun <- function(x) {coef(x) %>% tidy}
+
+df2 <- df %>% group_by(strain) %>% nest() %>%
+  mutate(drmod = map(data, drm.func), 
+         pred = map(drmod, predict.fun),
+         coefs = map(drmod, coefs.fun))
+
+# plot raw data, model and ED50 line
+toexpr<-function(x) {
+  getfun <- function(x) {
+    ifelse(x=="Hybrid", "plain", "italic")
+  }
+  as.expression(unname(Map(function(f,v) substitute(f(v), list(f=as.name(f), v=as.character(v))), getfun(x), x)))
+}
+
+Fig2C3<- df2 %>% unnest(data) %>% 
+  ggplot() + 
+  geom_line(aes(gen, pred, color = strain), data =
+              df2 %>% unnest(pred), linetype = "solid", size=0.8) +
+  geom_vline(aes(xintercept = log(x), color = strain),
+             data = df2 %>% unnest(coefs) %>% filter(names == "ED50:(Intercept)")) +
+  theme_bw() +ylim(0,0.8) +xlim(15,130) +
+  theme(legend.position = "NONE", axis.title.x = element_text(size=10), axis.text.x = element_text(size = 9),
+        axis.title.y = element_text(size=12), axis.text.y = element_text(size = 10)) +  
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black")) +
+  xlab("Time (generations)") + ylab("Growth rate (OD/hour)") +
+  scale_color_manual(values=c("green4", "dodgerblue1", "#FF9999"),
+                     labels = toexpr(c("S. cerevisiae", "S. paradoxus", "Hybrid"))) +
+  theme(legend.text.align = 0) + 
+  scale_x_continuous(breaks = c(25,50,75,100)) +
+  guides(color = guide_legend(title = "Genotype",
+                              override.aes=list(fill=NA)), 
+         linetype = guide_legend(title = "UV mimetic", 
+                                 override.aes=list(fill=NA)),
+         shape = guide_legend(title = "UV mimetic", override.aes=list(colour="black"))) +
+  theme(legend.text=element_text(size=4), legend.title=element_text(size=5), 
+        legend.direction = "horizontal", legend.box = "vertical") +
+  theme(legend.spacing.y = unit(-0.2, "cm"),
+        legend.margin=margin(0,0,0,0),
+        legend.box.margin=margin(0,0,-4,-4)) +
+  ggtitle("Logarithmic Model") +
+  theme(plot.title = element_text(hjust = 0.5, size = 9))
+
+
 
 ################Fig 2A################
 #We get initial and final growth in UV mimetic conditions
@@ -204,12 +535,12 @@ fig0$strain_day <- paste(fig0$strain,".", fig0$day)
 Fig2A <- fig0 %>% mutate(strain_day = as.character(interaction (fig0$strain, fig0$day))) %>%
   mutate(strain_day=factor(strain_day, levels= c("1Scer.3", "1Scer.21", "2Spar.3", "2Spar.21", "3Hybrid.3", "3Hybrid.21"))) %>%
   ggplot(., aes(x=as.factor(strain_day), y=rval, col=strain)) + 
-  geom_boxplot() +
+  geom_boxplot(outlier.shape = NA) +
   theme_minimal()+
   xlab("Generation") + ylab("Growth rate (OD/hour)")+
   ylim(0,0.8) +
-  scale_x_discrete(breaks=c("1Scer.3","1Scer.21","2Spar.3","2Spar.21","3Hybrid.3","3Hybrid.21"), labels=c("T0","T200","T0","T200","T0","T200"))+
-  theme(legend.position = "top",axis.title.x = element_text(size=12), axis.text.x = element_text(size = 10),
+  scale_x_discrete(breaks=c("1Scer.3","1Scer.21","2Spar.3","2Spar.21","3Hybrid.3","3Hybrid.21"), labels=c("T15","T100","T15","T100","T15","T100"))+
+  theme(legend.position = "top",axis.title.x = element_text(size=12), axis.text.x = element_text(size = 9),
         axis.title.y = element_text(size=12), axis.text.y = element_text(size = 10)) +
   theme(panel.border = element_blank(), panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"), axis.ticks = element_line(colour="black"))+
@@ -217,10 +548,10 @@ Fig2A <- fig0 %>% mutate(strain_day = as.character(interaction (fig0$strain, fig
   scale_color_manual(values=c("green4", "dodgerblue1", "#FF9999"), 
                      labels = toexpr(c("S. cerevisiae", "S. paradoxus", "Hybrid"))) +
   theme(legend.text.align = 0) + guides(color = guide_legend(title = "Genotype"))+
-  geom_jitter(position=position_jitter(0.2)) +
-  theme(legend.text=element_text(size=7), legend.title=element_text(size=8))
+  geom_jitter(position=position_jitter(0.2), size=0.6) +
+  theme(legend.text=element_text(size=6), legend.title=element_text(size=7))
 
-################Fig 2C################
+################Fig 2D################
 #graph comparing differences among strains 
 fig0 <- filter(fdataAREA, day == "3")
 fig0 <- filter(fig0, NQO == "Yes")
@@ -231,92 +562,58 @@ fig0a <- arrange(fig0a, rep, strain,day)
 
 fig0$subs = ((fig0a$rval) - (fig0$rval))
 
-my_comparisons2 <- list( c("1Scer.3", "2Spar.3"),c("1Scer.3", "3Hybrid.3"),c("2Spar.3", "3Hybrid.3"))
+fig0 <- fig0 %>% mutate(strain_day = as.character(interaction (fig0$strain, fig0$day))) %>%
+  mutate(strain_day=factor(strain_day, levels= c("1Scer.3", "1Scer.21", "2Spar.3", "2Spar.21", "3Hybrid.3", "3Hybrid.21"))) 
+
+stat.test <- aov(subs ~ strain_day, data = fig0) %>%
+  tukey_hsd()
 
 #in cm
-Fig2C <- fig0 %>% mutate(strain_day = as.character(interaction (fig0$strain, fig0$day))) %>%
-  mutate(strain_day=factor(strain_day, levels= c("1Scer.3", "1Scer.21", "2Spar.3", "2Spar.21", "3Hybrid.3", "3Hybrid.21"))) %>%
-  ggplot(., aes(x=as.factor(strain_day), y=subs, col=strain)) + 
-  geom_boxplot() +
+Fig2D <- ggplot(fig0, aes(x=as.factor(strain_day), y=subs, col=strain)) + 
+  geom_boxplot(outlier.shape = NA) +
   theme_minimal()+
   xlab("Generation") + ylab("Fitness gain (OD/hour)")+
-  #scale_x_discrete(breaks=c("1Scer.3","1Scer.21","2Spar.3","2Spar.21","3Hybrid.3","3Hybrid.21"), labels=c("T0","T200","T0","T200","T0","T200"))+
-  theme(axis.title.x = element_text(size=12), axis.text.x = element_text(size = 10),
+  theme(axis.title.x = element_text(size=12), axis.text.x = element_text(size = 8),
         axis.title.y = element_text(size=12), axis.text.y = element_text(size = 10)) +
   theme(legend.position="none",panel.border = element_blank(), panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"), axis.ticks = element_line(colour="black"))+
-  stat_compare_means(method = "anova", label.y = 0.75, aes(label = ..p.format..), size=2.5) +
-  stat_compare_means(comparisons= my_comparisons2, size=2.5, label = "p.format")+ 
+  stat_compare_means(method = "anova", label.y = 0.65, aes(label = ..p.format..), size=2.5) +
+  stat_pvalue_manual(
+    stat.test, label = "p.adj", 
+   y.position = c(0.5, 0.55, 0.6),
+   size=2.5
+  )+
   scale_color_manual(values=c("green4", "dodgerblue1", "#FF9999"), 
                      labels = toexpr(c("S. cerevisiae", "S. paradoxus", "Hybrid"))) +
   theme(legend.text.align = 0) + guides(color = guide_legend(title = "Genotype"))+
-  geom_jitter(position=position_jitter(0.2)) +
+  geom_jitter(position=position_jitter(0.2), size=0.6) +
   theme(legend.text=element_text(size=12)) +
   scale_x_discrete("Genotype", labels=expression(italic(S.cerevisiae), italic(S.paradoxus), Hybrid)) +
   theme(legend.text=element_text(size=7), legend.title=element_text(size=8))
 
-Fig2C <- Fig2C + guides(
+Fig2D <- Fig2D + guides(
   color = guide_legend(
     title = "Genotype",
     override.aes = aes(label = "")
   )
 )
 
-################Fig 2D################
-#GRAPH CORRELATION COEFFICIENTS THROUGH TIME by replicate
-correlation_graph <- read.csv("Fig_2D.csv")
-correlation_graph <- correlation_graph %>% mutate(gen= day*10)
-
-toexpr<-function(x) {
-  getfun <- function(x) {
-    ifelse(x=="Hybrid", "plain", "italic")
-  }
-  as.expression(unname(Map(function(f,v) substitute(f(v), list(f=as.name(f), v=as.character(v))), getfun(x), x)))
-}
-
-#Fig 2D in cm
-Fig2D <- correlation_graph %>%
-  ggplot(., aes(gen, corr, colour=strain, shape=NQO, linetype=NQO))  + 
-  geom_point() +
-  scale_linetype_manual(values=c("solid","dotted")) +
-  scale_shape_manual(values=c(16, 1))+
-  theme_classic()+
-  theme(legend.position = "top",panel.border = element_blank(), panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
-  ylim(-1, 1) +
-  scale_color_manual(values=c("green4", "dodgerblue1", "#FF9999"), 
-                     labels = toexpr(c("S. cerevisiae", "S. paradoxus", "Hybrid"))) +
-  theme(legend.text.align = 0) + guides(color = guide_legend(title = "Genotype"), shape = guide_legend(title = "UV mimetic"), linetype=FALSE) +
-  stat_smooth(method="lm", se=FALSE) + labs(y="r/K correlation", x = "Time (generations)") +
-  theme(axis.title.x = element_text(size=12), axis.text.x = element_text(size = 10),
-        axis.title.y = element_text(size=12), axis.text.y = element_text(size = 10)) +
-  guides(color = guide_legend(title = "Genotype",
-                              override.aes=list(fill=NA)), 
-         linetype = guide_legend(title = "UV mimetic", 
-                                 override.aes=list(fill=NA)),
-         shape = guide_legend(title = "UV mimetic", override.aes=list(colour="black"))) +
-  theme(legend.text=element_text(size=5), legend.title=element_text(size=6), 
-        legend.direction = "horizontal", legend.box = "vertical") +
-  theme(legend.spacing.y = unit(-0.2, "cm"),
-        legend.margin=margin(0,0,0,0),
-        legend.box.margin=margin(0,0,-4,-4))  
-
-
-Fig2D <- Fig2D + geom_hline(yintercept=0, linetype="dashed", color = "black")
-
-Fig2D
-
 ################Arrange figures################
-FIG1 <- plot_grid(Fig2A,Fig2B, labels = c("A","B"), nrow = 1)
-FIGS <- plot_grid(Fig2C,Fig2D, labels = c("C","D"), nrow = 1)
+Fig2Cnolegend <- plot_grid(Fig2C1,Fig2C2,Fig2C3, nrow = 1)
+Fig2C <- plot_grid(mylegend,Fig2Cnolegend, nrow = 2,
+                   rel_heights = c(1, 5))
 
-fig2 <- plot_grid(FIG1,FIGS, nrow=2)
-fig2
+
+FIG1 <- plot_grid(Fig2A,Fig2D, labels = c("A","D"), nrow = 1)
+FigC <- plot_grid(Fig2C, labels = c("C"), nrow = 1)
+FIGS <- plot_grid(Fig2B, labels = c("B"), nrow = 1)
+
+fig2rev <- plot_grid(FIG1, FIGS, FigC, nrow=3)
+fig2rev
 
 #Save
-ggsave (plot = fig2, filename = "figure2.jpg", units = "cm", device = "jpg",width = 20, height = 15, dpi = 300)
-ggsave (plot = fig2, filename = "figure2.pdf", units = "cm", device = "pdf",width = 20, height = 15, dpi = 300)
-
+ggsave (plot = fig2rev, filename = "Fig2.jpg", units = "cm", device = "jpg",width = 20, height = 20, dpi = 300)
+ggsave (plot = fig2rev, filename = "Fig2.pdf", units = "cm", device = "pdf",width = 20, height = 20, dpi = 300)
 
 
 ################Figure 3################
@@ -333,8 +630,7 @@ growth_rates <- fdata %>% group_by(strain, NQO, rep, day, gen) %>%
          max_size = max(od)) %>%
   mutate(note_fit = ifelse(note_fit=="", "OK", "ERROR")) %>%
   slice(1) %>%
-  ungroup() %>%
-  select(strain, NQO, rep, day, time, note_fit,rval, kval,tmid,aucexp, max_size, od, gen)
+  ungroup() 
 
 gr <- filter(growth_rates, note_fit=="OK")
 
@@ -394,26 +690,33 @@ fig0a <- arrange(fig0a, rep, strain,day, NQO, gen)
 
 #Change
 fig0$subs = ((fig0$rval) - (fig0a$rval)) 
-#fig0$subs = ((fig0a$rval) - (fig0$rval)) / (fig0a$rval) 
 
+fig0 <- fig0 %>% mutate(strain_day = as.character(interaction (fig0$strain, fig0$day))) 
+  
 my_comparisons2 <- list( c("1Scer.1", "2Spar.1"),c("1Scer.1", "3Hybrid.1"),c("2Spar.1", "3Hybrid.1"))
 
-Fig3B <- fig0 %>% mutate(strain_day = as.character(interaction (fig0$strain, fig0$day))) %>%
-  ggplot(., aes(x=as.factor(strain_day), y=subs, col=strain)) + 
-  geom_boxplot() +
+stat.test <- aov(subs ~ strain_day, data = fig0) %>%
+  tukey_hsd()
+
+
+Fig3B <- ggplot(fig0, aes(x=as.factor(strain_day), y=subs, col=strain)) + 
+  geom_boxplot(outlier.shape = NA) +
   theme_minimal()+
   xlab("Generation") + ylab("Change in growth rate (OD/hour)")+
-  #scale_x_discrete(breaks=c("1Scer.3","1Scer.21","2Spar.3","2Spar.21","3Hybrid.3","3Hybrid.21"), labels=c("T0","T200","T0","T200","T0","T200"))+
   theme(axis.title.x = element_text(size=12), axis.text.x = element_text(size = 10),
         axis.title.y = element_text(size=10), axis.text.y = element_text(size = 10)) +
   theme(legend.position="none",panel.border = element_blank(), panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"), axis.ticks = element_line(colour="black"))+
-  stat_compare_means(method = "anova", label.y = 0.25, aes(label = ..p.format..), size=2.5) +
-  stat_compare_means(comparisons= my_comparisons2, size=2.5)+ 
+  stat_compare_means(method = "anova", label.y = 0.2, aes(label = ..p.format..), size=2.5) +
+  stat_pvalue_manual(
+    stat.test, label = "p.adj", 
+    y.position = c(0.12, 0.15, 0.18),
+    size=2.5
+    ) +
   scale_color_manual(values=c("green4", "dodgerblue1", "#FF9999"), 
                      labels = toexpr(c("S. cerevisiae", "S. paradoxus", "Hybrid"))) +
   theme(legend.text.align = 0) + guides(color = guide_legend(title = "Genotype"))+
-  geom_jitter(position=position_jitter(0.2)) +
+  geom_jitter(position=position_jitter(0.2), size=0.6) +
   theme(legend.text=element_text(size=7), legend.title=element_text(size=8))+
   scale_x_discrete("Genotype", labels=expression(italic(S.cerevisiae), italic(S.paradoxus), Hybrid))
 
@@ -425,7 +728,7 @@ Fig3B <- Fig3B + guides(
 )
 
 ################Figure 3C################
-#cost: growth in ypd at t0 versus growth in ypd at t final) 
+#cost: growth in ypd at t0 versus growth in ypd at t final 
 #Adaptation: 
 #subtracting the growth in UV mimetic conditions at T0 from the growth in UV mimetic at T200
 #T200 evolved in 4-NQO (in 4-NQO conditions) - T0 ancestors (in 4-NQO conditions)
@@ -454,8 +757,7 @@ growth_rates_adap <- fdata %>% group_by(strain, NQO, rep, day) %>%
          max_size = max(od)) %>%
   mutate(note_fit = ifelse(note_fit=="", "OK", "ERROR")) %>%
   slice(1) %>%
-  ungroup() %>%
-  select(strain, NQO, rep, day, time, note_fit,rval, kval,tmid,aucexp, max_size, od, plate)
+  ungroup() 
 
 gradap <- dplyr::filter(growth_rates_adap, note_fit=="OK")
 gradap <- dplyr::filter(gradap, strain!="White")
@@ -482,6 +784,22 @@ NQO_21$adap = (NQO_21$rval - NQO_3$rval) / NQO_21$rval
 #Cost values: 
 #subtracting the growth in control of strains evolved in UV mimetic (T200) from the growth in control at T0
 #T200 evolved in 4-NQO (in control conditions) - T0 ancestors (in control conditions)
+fdata <- read.csv("Fig_3.csv")
+
+growth_rates <- fdata %>% group_by(strain, NQO, rep, day, gen) %>%
+  mutate(note_fit = SummarizeGrowth(hour, od)$vals$note,
+         rval = SummarizeGrowth(hour, od)$vals$r,
+         kval = SummarizeGrowth(hour, od)$vals$k,
+         tmid = SummarizeGrowth(hour, od)$vals$t_mid,
+         aucexp = SummarizeGrowth(hour, od)$vals$auc_l,
+         max_size = max(od)) %>%
+  mutate(note_fit = ifelse(note_fit=="", "OK", "ERROR")) %>%
+  slice(1) %>%
+  ungroup() #%>%
+  #select(strain, NQO, rep, day, time, note_fit,rval, kval,tmid,aucexp, max_size, od, gen)
+
+gr <- filter(growth_rates, note_fit=="OK")
+
 gen0 <- filter(gr, gen=="0")
 gen0 <- filter(gen0, rep!="31")
 gen0 <- filter(gen0, rep!="32")
@@ -504,22 +822,37 @@ NQO_21  <- NQO_21 %>%
 
 ALL <- inner_join(x=gen200, y=NQO_21, by=c("strain"="strain","NQO"="NQO","repi"="repi"))
 
+pd <- position_dodge(0.1)
+
 #Fig 3C in cm
-Fig3C <- ggscatter(ALL, x = "adap", y = "cost", group = "strain",color ="strain",
-                   add = "reg.line",  # Add regressin line,
-                   add.params = list(color = "blue", fill = "lightgray"), # Customize reg. line
-                   conf.int = TRUE) + stat_cor(method = "spearman", size=2.5) + xlab("Cost (%)") + ylab("Adaptation (%)") +
+Fig3C <- ggplot(ALL, aes(x=adap, y=cost, colour=strain)) +
+  geom_point(position=pd, size=0.6) +
+  theme_bw()+
+  stat_smooth(method = lm, se=FALSE, size = 0.5, level = 0.95) +
   theme(axis.text.x = element_text(hjust = 1), panel.border = element_blank(),
         panel.grid.major = element_blank(), panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
   xlab("Adaptation (OD/hour)") + ylab("Trade-off (OD/hour)") + scale_color_manual(values=c("green4", "dodgerblue1", "#FF9999"), 
                                                                                   labels = toexpr(c("S. cerevisiae", "S. paradoxus", "Hybrid"))) +
-  theme(legend.text.align = 0) + guides(color = guide_legend(title = "Genotype")) +
-  theme(axis.title.x = element_text(size=12), axis.text.x = element_text(size = 10),
-        axis.title.y = element_text(size=12), axis.text.y = element_text(size = 10)) +
-  theme(legend.text=element_text(size=7), legend.title=element_text(size=8))+
+  theme(legend.position = "top", axis.title.x = element_text(size=12), axis.text.x = element_text(size = 10),
+        axis.title.y = element_text(size=12), axis.text.y = element_text(size = 10)) +  
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black")) +
+  scale_color_manual(values=c("green4", "dodgerblue1", "#FF9999"),
+                     labels = toexpr(c("S. cerevisiae", "S. paradoxus", "Hybrid"))) +
+  theme(legend.text.align = 0) + 
+  guides(color = guide_legend(title = "Genotype",
+                              override.aes=list(fill=NA))) +
+  theme(legend.text=element_text(size=5), legend.title=element_text(size=6), 
+        legend.direction = "horizontal", legend.box = "vertical") +
   theme(legend.spacing.y = unit(-0.2, "cm"),
         legend.margin=margin(0,0,0,0),
         legend.box.margin=margin(0,0,-4,-4))
+
+
+#Model lm(cost adap)
+mod3 = lm(cost ~ adap*strain,
+          data = ALL)
+summary (mod3)
 
 
 ################Figure 3D################
@@ -530,23 +863,31 @@ ALL1 <- filter(ALL, ratio < 5)
 
 my_comparisons2 <- list( c("1Scer.1", "2Spar.1"),c("1Scer.1", "3Hybrid.1"),c("2Spar.1", "3Hybrid.1"))
 
+ALL1 <- ALL1 %>% mutate(strain_day = as.character(interaction (ALL1$strain, ALL1$day.x)))
+
+stat.test <- aov(ratio ~ strain_day, data = ALL1) %>%
+  tukey_hsd()
+
+  
 #Fig 3D in cm
-fig <- ALL1 %>% mutate(strain_day = as.character(interaction (ALL1$strain, ALL1$day.x))) %>%
-  ggplot(., aes(x=as.factor(strain_day), y=ratio, col=strain)) + 
-  geom_boxplot() +
+fig <- #ALL1 %>% mutate(strain_day = as.character(interaction (ALL1$strain, ALL1$day.x))) %>%
+  ggplot(ALL1, aes(x=as.factor(strain_day), y=ratio, col=strain)) + 
+  geom_boxplot(outlier.shape = NA) +
   theme_minimal()+ 
   xlab("Generation") + ylab("Ratio trade-off/adaptation") +
-  #scale_x_discrete(breaks=c("1Scer.3","1Scer.21","2Spar.3","2Spar.21","3Hybrid.3","3Hybrid.21"), labels=c("T0","T200","T0","T200","T0","T200"))+
   theme(axis.title.x = element_text(size=12), axis.text.x = element_text(size = 10),
         axis.title.y = element_text(size=10), axis.text.y = element_text(size = 10)) +
   theme(legend.position="none",panel.border = element_blank(), panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"), axis.ticks = element_line(colour="black"))+
-  stat_compare_means(method = "anova", label.y = 3, aes(label = ..p.format..), size=2.5) +
-  stat_compare_means(comparisons= my_comparisons2, size=2.5)+ 
+  stat_compare_means(method = "anova", label.y = 2.8, aes(label = ..p.format..), size=2.5) +
+  stat_pvalue_manual(
+      stat.test, label = "p.adj", 
+     y.position = c(2, 2.3, 2.6),
+     size=2.5) +
   scale_color_manual(values=c("green4", "dodgerblue1", "#FF9999"), 
                      labels = toexpr(c("S. cerevisiae", "S. paradoxus", "Hybrid"))) +
   theme(legend.text.align = 0) + guides(color = guide_legend(title = "Genotype"))+
-  geom_jitter(position=position_jitter(0.2)) +
+  geom_jitter(position=position_jitter(0.2), size=0.6) +
   theme(legend.text=element_text(size=12))+
   scale_x_discrete("Genotype", labels=expression(italic(S.cerevisiae), italic(S.paradoxus), Hybrid))+
   theme(legend.text=element_text(size=7), legend.title=element_text(size=8))
@@ -564,227 +905,7 @@ fig3a <- plot_grid(Fig3A,Fig3B, labels = c("A","B"), nrow = 1)
 fig3b <- plot_grid(Fig3C,Fig3D, labels = c("C","D"), nrow = 1)
 fig3 <- plot_grid(fig3a, fig3b, nrow = 2)
 
-ggsave (plot = fig3, filename = "figure3.jpg", units = "cm", device = "jpg",width = 20, height = 15, dpi = 300)
-ggsave (plot = fig3, filename = "figure3.pdf", units = "cm", device = "pdf",width = 20, height = 15, dpi = 300)
+ggsave (plot = fig3, filename = "Fig3.jpg", units = "cm", device = "jpg",width = 20, height = 15, dpi = 300)
+ggsave (plot = fig3, filename = "Fig3.pdf", units = "cm", device = "pdf",width = 20, height = 15, dpi = 300)
 
-
-
-
-################Figure 4################
-################Fitness data############
-fdata <- read.csv("Fig_2.csv")
-
-#Remove NA data
-fdata <- na.omit(fdata)
-fdata$day <- as.numeric(fdata$day)
-
-################Get growth rates################
-#remove days we do not have all time-points of the curves
-fdata <- dplyr::filter(fdata, day!=1)
-fdata <- dplyr::filter(fdata, day!=2)
-fdata <- dplyr::filter(fdata, day!=11)
-fdata <- dplyr::filter(fdata, day!=22)
-fdata <- dplyr::filter(fdata, day!=23)
-
-fdata$hour = (fdata$time)/3600
-
-growth_rates <- fdata %>% group_by(strain, NQO, rep, day) %>%
-  dplyr::mutate(note_fit = SummarizeGrowth(hour, od)$vals$note,
-                rval = SummarizeGrowth(hour, od)$vals$r,
-                kval = SummarizeGrowth(hour, od)$vals$k,
-                tmid = SummarizeGrowth(hour, od)$vals$t_mid,
-                aucexp = SummarizeGrowth(hour, od)$vals$auc_l,
-                max_size = max(od)) %>%
-  mutate(note_fit = ifelse(note_fit=="", "OK", "ERROR")) %>%
-  slice(1) %>%
-  ungroup() %>%
-  select(strain, NQO, rep, day, time, note_fit,rval, kval,tmid,aucexp, max_size, od, plate)
-
-gr <- dplyr::filter(growth_rates, note_fit=="OK")
-gr <- dplyr::filter(gr, strain!="White")
-
-data_max <- gr
-
-fdataAREA <- filter(fdataAREA, rval < 20)
-
-#graph comparing if differences among strains are different
-fig0 <- filter(fdataAREA, day == "3")
-fig0 <- filter(fig0, NQO == "Yes")
-fig0 <- arrange(fig0, rep, strain,day)
-fig0a <- filter(fdataAREA, day == "21")
-fig0a <- filter(fig0a, NQO == "Yes")
-fig0a <- arrange(fig0a, rep, strain,day)
-
-fig0$subs = ((fig0a$rval) - (fig0$rval))
-
-my_comparisons2 <- list( c("1Scer.3", "2Spar.3"),c("1Scer.3", "3Hybrid.3"),c("2Spar.3", "3Hybrid.3"))
-
-
-#Function to have italic font in legend
-toexpr<-function(x) {
-  getfun <- function(x) {
-    ifelse(x=="Hybrid", "plain", "italic")
-  }
-  as.expression(unname(Map(function(f,v) substitute(f(v), list(f=as.name(f), v=as.character(v))), getfun(x), x)))
-}
-
-################Figure 4 and Ploidy Dataset################
-Ploidy_2 <- read.csv("Fig_4.csv")
-
-#Prepare data
-Ploidy_2$rep <- as.character(Ploidy_2$rep)
-fig0$strain_day <- paste(fig0$strain,".", fig0$day)
-fig0$rep <- as.character(fig0$rep) 
-Ploidy_2$rep <- as.character(Ploidy_2$rep) 
-data_max <- inner_join(Ploidy_2, fig0, by = c("strain", "NQO", "rep"))
-
-my_comparisons2 <- list( c("1Scer.3", "2Spar.3"),c("1Scer.3", "3Hybrid.3"),c("2Spar.3", "3Hybrid.3"))
-data_max <- dplyr::filter(data_max, rep!= "31")
-data_max<- dplyr::filter(data_max, rep!= "32")
-
-#Figure
-my_comparisons <- list( c("2_2", "2_3"), c("2_2","3_3"), c("2_3","3_3"),
-                        c("3_2","2_2"), c("3_2","3_3"), c("3_2","2_3"))
-
-data_max <- data_max %>%  mutate(strain = gsub(strain, pattern = "1Scer",replacement = "S.cerevisiae")) 
-data_max <- data_max %>%  mutate(strain = gsub(strain, pattern = "2Spar",replacement = "S.paradoxus"))
-data_max <- data_max %>%  mutate(strain = gsub (strain, pattern = "3Hybrid",replacement = "Hybrid")) 
-
-my_comparisons <- list( c("2_2", "2_3"), c("2_2","3_2"), c("2_2","3_3"),
-                        c("2_3","3_2"),c("2_3","3_3"),c("3_2","3_3"))
-
-p200 <- filter(data_max, gen=="200_UV")
-p200 <- filter(p200, strain=="Hybrid")
-#p1 <- p200 %>% ggplot(., aes(Change,subs)) + 
-geom_boxplot(col="#FF9999") + 
-  theme_bw() +
-  ylim(-0.1,0.5)+
-  #ggtitle("Hybrid") +
-  stat_compare_means(method="kruskal.test", label = "p.format", label.y=0.5) +
-  xlab("Ploidy change") + ylab("Fitness gain (OD/hour)") +
-  theme(axis.title.x = element_text(size=14), axis.text.x = element_text(size = 12),
-        axis.title.y = element_text(size=14), axis.text.y = element_text(size = 12)) +
-  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black")) + 
-  theme(strip.text.y = element_text(size=12))+
-  theme(plot.title=element_text(size=12))+
-  #stat_compare_means(comparisons = my_comparisons, label = "p.format", label.y = c(0.41, 0.44, 0.47,0.50,0.53,0.57)) +
-  labs(title="Hybrid")+ geom_jitter(position=position_jitter(0.2), col="#FF9999")+
-  annotate("text",x=c("2_2","2_3","3_3","3_2"), y=-0.1, label=c("(26)","(3)","(1)","(1)"))
-
-#get p valor 0.64
-p1 <- p200 %>% ggplot(., aes(Change,subs)) + 
-  geom_boxplot(col="#FF9999") + 
-  theme_bw() +
-  ylim(-0.1,0.5)+
-  #ggtitle("Hybrid") +
-  #stat_compare_means(method="kruskal.test", label = "p.format", label.y=0.5) +
-  xlab("Ploidy change") + ylab("Fitness gain (OD/hour)") +
-  theme(axis.title.x = element_text(size=14), axis.text.x = element_text(size = 12),
-        axis.title.y = element_text(size=14), axis.text.y = element_text(size = 12)) +
-  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black")) + 
-  theme(strip.text.y = element_text(size=12))+
-  theme(plot.title=element_text(size=12))+
-  #stat_compare_means(comparisons = my_comparisons, label = "p.format", label.y = c(0.41, 0.44, 0.47,0.50,0.53,0.57)) +
-  labs(title="Hybrid")+ geom_jitter(position=position_jitter(0.2), col="#FF9999")+
-  annotate("text",x=c("2_2","2_3","3_3","3_2", "2_3"), y=c(-0.1,-0.1,-0.1,-0.1, 0.5), label=c("(26)","(3)","(1)","(1)", "0.64"))
-
-
-my_comparisons <- list( c("2_2", "2_3"), c("2_2","3_3"), c("2_3","3_3"))
-
-p200 <- filter(data_max, gen=="200_UV")
-p200 <- filter(p200, strain=="S.cerevisiae")
-
-#witohout 3_2
-#p2 <- p200 %>% ggplot(., aes(Change,subs)) + 
-geom_boxplot(col="green4") + theme_bw() +
-  ylim(0,0.6)+
-  #ggtitle("Hybrid") +
-  stat_compare_means(method="kruskal.test", label = "p.format", label.y = 0.6) +
-  #stat_compare_means(comparisons = my_comparisons, label = "p.format", label.y = c(0.45, 0.48, 0.51)) +
-  xlab("Ploidy change") + ylab("Fitness gain (OD/hour)") +
-  theme(axis.title.x = element_text(size=14), axis.text.x = element_text(size = 12),
-        axis.title.y = element_text(size=14), axis.text.y = element_text(size = 12)) +
-  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black")) + 
-  theme(strip.text.y = element_text(face = "italic", size=15)) +
-  labs(title="Saccharomyces cerevisiae")+
-  scale_x_discrete(breaks = c("2_2","2_3","3_3"),
-                   labels=as.character(c("2_2","2_3","3_3"))) +
-  theme(plot.title=element_text(face = "italic")) +
-  annotate("text",x=c("2_2","2_3","3_3"), 
-           y=0.42, label=c("(26)","(2)","(2)")) + geom_jitter(position=position_jitter(0.2), col="green4")
-
-#We get the pvalue = 0.62
-
-p2 <- p200 %>% ggplot(., aes(Change,subs)) + 
-  geom_boxplot(col="green4") + theme_bw() +
-  ylim(-0.1,0.5)+
-  #ggtitle("Hybrid") +
-  stat_compare_means(method="kruskal.test", label = "p.format", label.y = 0.6) +
-  #stat_compare_means(comparisons = my_comparisons, label = "p.format", label.y = c(0.45, 0.48, 0.51)) +
-  xlab("Ploidy change") + ylab("Fitness gain (OD/hour)") +
-  theme(axis.title.x = element_text(size=14), axis.text.x = element_text(size = 12),
-        axis.title.y = element_text(size=14), axis.text.y = element_text(size = 12)) +
-  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black")) + 
-  theme(strip.text.y = element_text(face = "italic", size=12)) +
-  labs(title="S. cerevisiae")+
-  scale_x_discrete(breaks = c("2_2","2_3","3_3","3_2"),
-                   labels=as.character(c("2_2","2_3","3_3","3_2"))) +
-  theme(plot.title=element_text(face = "italic", size=12)) +
-  annotate("text",x=c("2_2","2_3","3_3","3_2","2_3"), 
-           y=c(-0.1,-0.1,-0.1,-0.1, 0.5), label=c("(26)","(2)","(2)","(0)","0.62")) +
-  geom_jitter(position=position_jitter(0.2), col="green4")
-
-#Spar
-my_comparisons <- list(c("2_2","3_3"))
-
-p200 <- filter(data_max, gen=="200_UV")
-p200 <- filter(p200, strain=="S.paradoxus")
-#p3 <- p200 %>% ggplot(., aes(Change,subs)) +
-geom_boxplot(col="dodgerblue1") +
-  theme_bw() +
-  ylim(0,0.6)+
-  #ggtitle("Hybrid") +
-  stat_compare_means(method="wilcox.test", label = "p.format", label.y = 0.6) +
-  xlab("Ploidy change") + ylab("Fitness gain (OD/hour)")+
-  theme(axis.title.x = element_text(size=14), axis.text.x = element_text(size = 12),
-        axis.title.y = element_text(size=14), axis.text.y = element_text(size = 12)) +
-  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black")) + 
-  theme(strip.text.y = element_text(face = "italic", size=15)) +
-  scale_x_discrete(breaks = c("2_2","3_2"),labels=as.character(c("2_2","3_2"))) +
-  labs(title="Saccharomyces paradoxus")+
-  theme(plot.title=element_text(face = "italic"),size=12) +
-  geom_jitter(position=position_jitter(0.2), col="dodgerblue1") +
-  annotate("text",x=c("2_2","3_3"), 
-           y=0.5, label=c("(28)","(0)")) 
-
-#Get p-value p = 0.23
-p3 <- p200 %>% ggplot(., aes(Change,subs)) +
-  geom_boxplot(col="dodgerblue1") +
-  theme_bw() +
-  ylim(-0.1,0.5)+
-  #ggtitle("Hybrid") +
-  stat_compare_means(method="wilcox.test", label = "p.format", label.y = 0.6) +
-  xlab("Ploidy change") + ylab("Fitness gain (OD/hour)")+
-  theme(axis.title.x = element_text(size=14), axis.text.x = element_text(size = 12),
-        axis.title.y = element_text(size=14), axis.text.y = element_text(size = 12)) +
-  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black")) + 
-  theme(strip.text.y = element_text(face = "italic", size=12)) +
-  scale_x_discrete(breaks = c("2_2","2_3","3_3","3_2"),labels=as.character(c("2_2","2_3","3_3","3_2"))) +
-  labs(title="S. paradoxus")+
-  theme(plot.title=element_text(face = "italic",size=12)) +
-  geom_jitter(position=position_jitter(0.2), col="dodgerblue1") +
-  annotate("text",x=c("2_2","2_3","3_3","3_2", "2_3"), 
-           y=c(-0.1, -0.1, -0.1, -0.1, 0.5), label=c("(28)","(0)","(2)","(0)", "0.23")) 
-#Figure
-fig4 <- plot_grid(p2,p3,p1, labels = c("","",""), nrow = 1)
-
-################Save Figure 4################
-ggsave (plot = fig4, filename = "figure4.jpg", units = "cm", device = "jpg",width = 20, height = 10, dpi = 300)
-ggsave (plot = fig4, filename = "figure4.pdf", units = "cm", device = "pdf",width = 20, height = 10, dpi = 300)
 
