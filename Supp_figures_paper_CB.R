@@ -31,6 +31,8 @@ library(modelr)
 library(egg)
 library(ggpubr)
 library(rstatix)
+library(aomisc)
+library(HDPenReg)
 
 
 
@@ -180,11 +182,11 @@ D <- ggplot(fdata, aes(x=hour, y=DO, colour=strain, group=interaction(Replica,st
                      strip.background = element_rect(fill = "white", color="white"), 
                      strip.text.x = element_blank()) + scale_color_manual(values=c("green4", "dodgerblue1", "#FF9999"), 
                                                                           labels = toexpr(c("S. cerevisiae", "S. paradoxus", "Hybrid"))) +
-  scale_linetype_manual(values = c(1, 96), labels = c("6","12"))+
+  scale_linetype_manual(values = c(1, 96), labels = c("1","2"))+
   theme(axis.title.x = element_text(size=12), axis.text.x = element_text(size = 10),
         axis.title.y = element_text(size=12), axis.text.y = element_text(size = 10))+
   theme(legend.text.align = 0) + guides(color = guide_legend(title = "Genotype"),
-                                        linetype = guide_legend(title = "Generation")) +
+                                        linetype = guide_legend(title = "Round of dilution")) +
   theme(legend.text=element_text(size=6), legend.title=element_text(size=7), 
         legend.direction = "horizontal", legend.box = "vertical") +
   theme(legend.spacing.y = unit(-0.2, "cm"),
@@ -379,7 +381,7 @@ fdata <- na.omit(fdata)
 fdata$hour = (fdata$time)/3600
 
 growth_rates <- fdata %>% group_by(strain, NQO, rep, day, gen) %>%
-  mutate(note_fit = SummarizeGrowth(hour, od)$vals$note,
+  dplyr::mutate(note_fit = SummarizeGrowth(hour, od)$vals$note,
          rval = SummarizeGrowth(hour, od)$vals$r,
          kval = SummarizeGrowth(hour, od)$vals$k,
          tmid = SummarizeGrowth(hour, od)$vals$t_mid,
@@ -497,8 +499,8 @@ hy <- filter(con, strain== "3Hybrid")%>%
   guides(linetype = guide_legend(title = "Evolved in:"), shape = FALSE)
 
 
-##############Save Figure S6##############
-figS6 <- plot_grid(scer,spar,hy, labels = c("A","B","C"), nrow = 3)
+################Save Figure S6##############
+figS6 <- plot_grid(scer,spar,hy, labels = c("","",""), nrow = 3)
 
 ggsave (plot = figS6, filename = "FigS6.jpg", units = "cm", device = "jpg",width = 15, height = 20, dpi = 300)
 ggsave (plot = figS6, filename = "FigS6.pdf", units = "cm", device = "pdf",width = 15, height = 20, dpi = 300)
@@ -559,8 +561,10 @@ ggsave (plot = FigS7, filename = "FigS7.pdf", units = "cm", device = "pdf",width
 ################Get Dataset with growth rate################
 fdata <- read.csv("Fig_3.csv")
 
-growth_rates <- fdata %>% group_by(strain, NQO, rep, day, gen) %>%
-  mutate(note_fit = SummarizeGrowth(hour, od)$vals$note,
+fdata$hour = (fdata$time)/3600
+
+growth_rates <- fdata %>% group_by(strain, NQO, rep, gen) %>%
+  dplyr::mutate(note_fit = SummarizeGrowth(hour, od)$vals$note,
          rval = SummarizeGrowth(hour, od)$vals$r,
          kval = SummarizeGrowth(hour, od)$vals$k,
          tmid = SummarizeGrowth(hour, od)$vals$t_mid,
@@ -569,6 +573,7 @@ growth_rates <- fdata %>% group_by(strain, NQO, rep, day, gen) %>%
   mutate(note_fit = ifelse(note_fit=="", "OK", "ERROR")) %>%
   slice(1) %>%
   ungroup() 
+
 
 gr <- filter(growth_rates, note_fit=="OK")
 
@@ -614,15 +619,14 @@ fdata <- dplyr::filter(fdata, day!=23)
 fdata$hour = (fdata$time)/3600
 
 growth_rates_adap <- fdata %>% group_by(strain, NQO, rep, day) %>%
-  mutate(note_fit = SummarizeGrowth(hour, od)$vals$note,
+  dplyr::mutate(note_fit = SummarizeGrowth(hour, od)$vals$note,
          rval = SummarizeGrowth(hour, od)$vals$r,
          kval = SummarizeGrowth(hour, od)$vals$k,
          tmid = SummarizeGrowth(hour, od)$vals$t_mid,
          aucexp = SummarizeGrowth(hour, od)$vals$auc_l,
          max_size = max(od)) %>%
   mutate(note_fit = ifelse(note_fit=="", "OK", "ERROR")) %>%
-  slice(1) %>%
-  ungroup() 
+  slice(1) #%>% ungroup() 
 
 gradap <- dplyr::filter(growth_rates_adap, note_fit=="OK")
 gradap <- dplyr::filter(gradap, strain!="White")
@@ -669,7 +673,7 @@ gen200  <- gen200 %>%
 NQO_21  <- NQO_21 %>% 
   rename(repi = rep)
 
-ALL <- inner_join(x=gen200, y=NQO_21, by=c("strain"="strain","NQO"="NQO","repi"="repi"))
+ALL <- inner_join(x=gen200, y=NQO_21, by=c("strain"="strain","NQO"="NQO","rep"="rep"))
 
 toexpr<-function(x) {
   getfun <- function(x) {
@@ -703,4 +707,89 @@ FigS8 <- ggscatter(ALL, x = "adap", y = "cost", group = "strain",color ="strain"
 ggsave (plot = FigS8, filename = "FigS8.jpg", units = "cm", device = "jpg",width = 20, height = 15, dpi = 300)
 ggsave (plot = FigS8, filename = "FigS8.pdf", units = "cm", device = "pdf",width = 20, height = 15, dpi = 300)
 
+
+################Table S3################
+#Data
+fdata <- read.csv("Fig_2.csv")
+fdata <- fdata %>% 
+  dplyr::filter(strain!="White", day>2)  %>%
+  group_by(day, strain, NQO, rep, plate, tecan, time) %>% 
+  dplyr::summarise(od = max(od),max_temp = max(time)) 
+
+fdata <- dplyr::filter(fdata, day!=1)
+fdata <- dplyr::filter(fdata, day!=2)
+fdata <- dplyr::filter(fdata, day!=11)
+fdata <- dplyr::filter(fdata, day!=22)
+fdata <- dplyr::filter(fdata, day!=23)
+
+fdata$hour = (fdata$time)/3600
+
+growth_rates <- fdata %>% group_by(strain, NQO, rep, day) %>%
+  dplyr::mutate(note_fit = SummarizeGrowth(hour, od)$vals$note,
+                rval = SummarizeGrowth(hour, od)$vals$r,
+                kval = SummarizeGrowth(hour, od)$vals$k,
+                tmid = SummarizeGrowth(hour, od)$vals$t_mid,
+                aucexp = SummarizeGrowth(hour, od)$vals$auc_l,
+                max_size = max(od)) %>%
+  mutate(note_fit = ifelse(note_fit=="", "OK", "ERROR")) %>%
+  slice(1) %>%
+  ungroup() #%>%
+#select(strain, NQO, rep, day, time, note_fit,rval, kval,tmid,aucexp, max_size, od, plate)
+
+gr <- dplyr::filter(growth_rates, note_fit=="OK")
+gr <- dplyr::filter(gr, strain!="White")
+
+fdataAREA <- gr
+
+fdataAREA <- filter(fdataAREA, rval<5)
+nitro1 <- filter(fdataAREA, NQO=="Yes")
+
+nitro1 <- nitro1 %<>% mutate(strain=ifelse(strain=="1Scer", "Scer",
+                                           ifelse(strain=="2Spar", "Spar",
+                                                  ifelse(strain=="3Hybrid", "Hybrid", NA)))) 
+
+
+#Linear model
+linear = lm(rval ~ day*strain,
+            data = nitro1)
+
+summary(linear)
+
+################Table S4################
+#Logarithmic model
+logarithmic <- drm(rval ~ day,strain, fct = DRC.logCurve(),
+                   data = nitro1)
+
+summary(logarithmic)
+compParm(logarithmic, "b", "-")
+
+################Table S5################
+#Asymptotic model
+asymptotic <- drm(rval ~ day, strain, fct = AR.3(), data = nitro1)
+coef(asymptotic)
+
+summary(asymptotic)
+compParm(asymptotic, "c", "-")
+compParm(asymptotic, "d", "-")
+
+################Table S2################
+#AIC
+linear = lm(rval ~ day*strain, data = nitro1)
+asymptotic <- drm(rval ~ day, strain, fct = AR.3(), data = nitro1)
+logarithmic <- drm(rval ~ day,strain, fct = DRC.logCurve(), data = nitro1)
+
+AICc_1 <- AIC(linear)
+AICc_2 <- AIC(asymptotic)
+AICc_8 <- AIC(logarithmic)
+
+Results <- data.frame(Model = c("Linear",
+                                "Asymptotic",
+                                "Logarithmic"))
+
+Results$AICc <- c(AICc_1, AICc_2, AICc_8)
+Results$Delta_AICc <- Results$AICc-min(Results$AICc)
+Results$ModelLik <- exp(-0.5*Results$Delta_AICc)
+Results$AICcWt <- Results$ModelLik/sum(Results$ModelLik)
+AICctable <- Results[rev(order(Results$AICcWt)), ]
+AICctable
 
