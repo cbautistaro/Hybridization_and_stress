@@ -47,3 +47,7 @@ B) 2 scripts:
 INPUT: These scripts require that the user adds the path to the directory containing the data files in setwd(""). Afterwards, the scripts can be executed without additional arguments because they use the relative paths to each of the data sets.
 
 OUTPUT: The user will receive as output all the figures in "pdf" and "jpg" format in the directory containing the data tables.
+
+
+
+
