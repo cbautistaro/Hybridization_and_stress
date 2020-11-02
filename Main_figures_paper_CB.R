@@ -144,6 +144,8 @@ Fig1 <- plot_grid(f0y4, Fig1C, labels = c("B", "C"), nrow=1 )
 
 ggsave (plot = Fig1, filename = "Fig1.jpg", units = "cm", device = "jpg",width = 20, height = 10, dpi = 300)
 ggsave (plot = Fig1, filename = "Fig1.pdf", units = "cm", device = "pdf",width = 20, height = 10, dpi = 300)
+ggsave (plot = Fig1, filename = "Fig1.tiff", units = "cm", device = "tiff",width = 20, height = 10, dpi = 300)
+
 
 ################Figure2 for the model##############
 #Only for the model
@@ -614,7 +616,7 @@ fig2rev
 #Save
 ggsave (plot = fig2rev, filename = "Fig2.jpg", units = "cm", device = "jpg",width = 20, height = 20, dpi = 300)
 ggsave (plot = fig2rev, filename = "Fig2.pdf", units = "cm", device = "pdf",width = 20, height = 20, dpi = 300)
-
+ggsave (plot = fig2rev, filename = "Fig2.tiff", units = "cm", device = "tiff",width = 20, height = 20, dpi = 300)
 
 ################Figure 3################
 #Fitness_cost
@@ -622,7 +624,7 @@ ggsave (plot = fig2rev, filename = "Fig2.pdf", units = "cm", device = "pdf",widt
 fdata <- read.csv("Fig_3.csv")
 
 growth_rates <- fdata %>% group_by(strain, NQO, rep, day, gen) %>%
-  mutate(note_fit = SummarizeGrowth(hour, od)$vals$note,
+  dplyr::mutate(note_fit = SummarizeGrowth(hour, od)$vals$note,
          rval = SummarizeGrowth(hour, od)$vals$r,
          kval = SummarizeGrowth(hour, od)$vals$k,
          tmid = SummarizeGrowth(hour, od)$vals$t_mid,
@@ -749,7 +751,7 @@ fdata <- dplyr::filter(fdata, day!=23)
 fdata$hour = (fdata$time)/3600
 
 growth_rates_adap <- fdata %>% group_by(strain, NQO, rep, day) %>%
-  mutate(note_fit = SummarizeGrowth(hour, od)$vals$note,
+  dplyr::mutate(note_fit = SummarizeGrowth(hour, od)$vals$note,
          rval = SummarizeGrowth(hour, od)$vals$r,
          kval = SummarizeGrowth(hour, od)$vals$k,
          tmid = SummarizeGrowth(hour, od)$vals$t_mid,
@@ -787,7 +789,7 @@ NQO_21$adap = (NQO_21$rval - NQO_3$rval) / NQO_21$rval
 fdata <- read.csv("Fig_3.csv")
 
 growth_rates <- fdata %>% group_by(strain, NQO, rep, day, gen) %>%
-  mutate(note_fit = SummarizeGrowth(hour, od)$vals$note,
+  dplyr::mutate(note_fit = SummarizeGrowth(hour, od)$vals$note,
          rval = SummarizeGrowth(hour, od)$vals$r,
          kval = SummarizeGrowth(hour, od)$vals$k,
          tmid = SummarizeGrowth(hour, od)$vals$t_mid,
@@ -907,5 +909,8 @@ fig3 <- plot_grid(fig3a, fig3b, nrow = 2)
 
 ggsave (plot = fig3, filename = "Fig3.jpg", units = "cm", device = "jpg",width = 20, height = 15, dpi = 300)
 ggsave (plot = fig3, filename = "Fig3.pdf", units = "cm", device = "pdf",width = 20, height = 15, dpi = 300)
+ggsave (plot = fig3, filename = "Fig3.tiff", units = "cm", device = "tiff",width = 20, height = 15, dpi = 300)
+
+
 
 
