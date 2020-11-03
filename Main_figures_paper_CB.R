@@ -144,8 +144,6 @@ Fig1 <- plot_grid(f0y4, Fig1C, labels = c("B", "C"), nrow=1 )
 
 ggsave (plot = Fig1, filename = "Fig1.jpg", units = "cm", device = "jpg",width = 20, height = 10, dpi = 300)
 ggsave (plot = Fig1, filename = "Fig1.pdf", units = "cm", device = "pdf",width = 20, height = 10, dpi = 300)
-ggsave (plot = Fig1, filename = "Fig1.tiff", units = "cm", device = "tiff",width = 20, height = 10, dpi = 300)
-
 
 ################Figure2 for the model##############
 #Only for the model
@@ -616,7 +614,6 @@ fig2rev
 #Save
 ggsave (plot = fig2rev, filename = "Fig2.jpg", units = "cm", device = "jpg",width = 20, height = 20, dpi = 300)
 ggsave (plot = fig2rev, filename = "Fig2.pdf", units = "cm", device = "pdf",width = 20, height = 20, dpi = 300)
-ggsave (plot = fig2rev, filename = "Fig2.tiff", units = "cm", device = "tiff",width = 20, height = 20, dpi = 300)
 
 ################Figure 3################
 #Fitness_cost
@@ -909,8 +906,5 @@ fig3 <- plot_grid(fig3a, fig3b, nrow = 2)
 
 ggsave (plot = fig3, filename = "Fig3.jpg", units = "cm", device = "jpg",width = 20, height = 15, dpi = 300)
 ggsave (plot = fig3, filename = "Fig3.pdf", units = "cm", device = "pdf",width = 20, height = 15, dpi = 300)
-ggsave (plot = fig3, filename = "Fig3.tiff", units = "cm", device = "tiff",width = 20, height = 15, dpi = 300)
-
-
 
 
